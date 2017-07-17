@@ -6,7 +6,7 @@ int started = 0;
 // 0 or greater if the commander driver is connected, and negative otherwise.
 int context = -1;
 
-// 0 if the commander driver is currently sending, and 1 otherwise.
+// 0 if the commander driver is currently idle (not sending), and 1 otherwise.
 int sending = 0;
 
 // Default "empty" data packet for sending commands.
