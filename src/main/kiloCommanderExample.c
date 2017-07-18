@@ -9,6 +9,8 @@ int max(int one, int two) {
 }
 
 int main(int argc, char* argv[]) {
+    int fd = openOhc(OHC_DEFAULT_ADDRESS);
+
     while (1) {
         // int i = atoi(argv[1]);
         int i;
@@ -21,7 +23,7 @@ int main(int argc, char* argv[]) {
             payload[1] = max((rand() % 3), 1);
             payload[2] = max((rand() % 3), 1);
 
-            kbSendMessage(payload);
+            kbSendMessage(fd, payload);
             usleep(25000);
 
             payload[8] = i;
@@ -29,7 +31,7 @@ int main(int argc, char* argv[]) {
             payload[1] = 0;
             payload[2] = 0;
 
-            kbSendMessage(payload);
+            kbSendMessage(fd, payload);
             usleep(25000);
         }
     }

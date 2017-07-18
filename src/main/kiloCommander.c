@@ -1,38 +1,90 @@
 #include "kiloCommander.h"
 
-// 0 if the commander driver has been started, and 1 otherwise.
-int started = 0;
-
-// 0 or greater if the commander driver is connected, and negative otherwise.
-int context = -1;
-
-// 0 if the commander driver is currently idle (not sending), and 1 otherwise.
-int sending = 0;
-
 // Default "empty" data packet for sending commands.
 uint8_t emptyDataPacket[9] = {0};
 
+typedef struct KiloCommanderState {
+    // 0 or greater if the commander driver is connected, and negative otherwise.
+    int fd;
+
+    // 0 if the commander driver is currently idle (not sending), and 1 otherwise.
+    int sending;
+} KiloCommanderState;
+
+// Fixed size support for up to eight overhead controllers.
+KiloCommanderState state[8];
+int stateSize = 0;
+
 /**
- * Open the Overhead Controller on some device.
+ * TODO:
  *
- * TODO: Add validation if controller is already open.
+ * @param fd
  *
  * @return [description]
  */
-void openOhc(const char* name) {
+KiloCommanderState* _getState(int fd) {
+    int i;
+    for (i = 0; i < stateSize; i++) {
+        if (state[i].fd == fd) {
+            return &state[i];
+        }
+    }
 
-    // Attempt to open the port.
-    int fd = open(name, O_RDWR | O_NOCTTY | O_NDELAY | O_NONBLOCK);
+    return NULL;
+}
+
+/**
+ * TODO:
+ *
+ * @param fd
+ *
+ * @return [description]
+ */
+int _hasState(int fd) {
+    int i;
+
+    for (i = 0; i < stateSize; i++) {
+        if (state[i].fd == fd) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * TODO:
+ *
+ * @param state
+ *
+ * @return [description]
+ */
+int _insertState(KiloCommanderState KiloCommanderState) {
+    if (stateSize < 8) {
+        state[stateSize] = KiloCommanderState;
+        stateSize++;
+        return 1;
+    }
+
+    return 0;
+}
+
+int openOhc(const char* name) {
+
+    // Attempt to open port.
+    KiloCommanderState state;
+    state.fd = open(name, O_RDWR | O_NOCTTY | O_NDELAY | O_NONBLOCK);
+    state.sending = 0;
 
     // Print an error on failure.
-    if (fd == -1) {
+    if (state.fd == -1) {
         fprintf(stderr, "Unable to open overhead controller @ %s\n", name);
 
     // Configure the port.
     } else {
         // Get port options.
         struct termios options;
-        tcgetattr(fd, &options);
+        tcgetattr(state.fd, &options);
 
         // Set I/O baud.
         cfsetispeed(&options, OHC_BAUD);
@@ -54,48 +106,43 @@ void openOhc(const char* name) {
         options.c_cc[VTIME] = 0;
 
         // Apply the options.
-        tcsetattr(fd, TCSANOW, &options);
+        tcsetattr(state.fd, TCSANOW, &options);
+
+        // Register state.
+        _insertState(state);
     }
 
-    // Started.
-    started = 1;
-    context = fd;
+    return state.fd;
 }
 
-/**
- * TODO:
- *
- * @method sendDataMessage
- * @param payload
- * @param type
- */
-int sendMessage(uint8_t *payload, uint8_t type_int, int withPayload) {
-    if (!started) {
-        openOhc(OHC_DEFAULT_ADDRESS);
-    }
-
-    unsigned char type = (unsigned char) type_int;
-
-    // Exit if bad context.
-    if (context < 0) {
-        fprintf(stderr, "Cannot send data messages if the serial port is not connected (context = %d).\n", context);
+int sendMessage(int fd, uint8_t *payload, uint8_t type_int, int withPayload) {
+    // Exit if bad fd.
+    if (!_hasState(fd)) {
+        fprintf(stderr, "Cannot send data messages if the serial port is not connected (FD = %d).\n", fd);
         return -1;
     }
+
+    // Get state.
+    KiloCommanderState* state = _getState(fd);
+
+    // Cast type to a char for transmission.
+    unsigned char type = (unsigned char) type_int;
 
     // Prepare packet.
     char packet[PACKET_SIZE + 1] = {0};
 
     if (type == COMMAND_STOP) {
-        sending = 0;
+        state->sending = 0;
+
         packet[0] = PACKET_HEADER;
         packet[1] = PACKET_STOP;
         packet[PACKET_SIZE-1]=PACKET_HEADER^PACKET_STOP;
     } else {
-        if (sending) {
-            sendMessage(emptyDataPacket, COMMAND_STOP, 0);
+        if (state->sending) {
+            sendMessage(fd, emptyDataPacket, COMMAND_STOP, 0);
         }
 
-        sending = 1;
+        state->sending = 1;
 
         uint8_t checksum = PACKET_HEADER^PACKET_FORWARDMSG^type;
 
@@ -120,21 +167,21 @@ int sendMessage(uint8_t *payload, uint8_t type_int, int withPayload) {
     packet[PACKET_SIZE] = '\0';
 
     // Publish data packet.
-    int n = write(context, packet, PACKET_SIZE);
-    tcdrain(context);
+    int n = write(state->fd, packet, PACKET_SIZE);
+    tcdrain(state->fd);
 
     // Return status.
     return n;
 }
 
-void kbReset() {
-    sendMessage(emptyDataPacket, RESET, 0);
+int kbSendMessage(int fd, uint8_t *payload) {
+    return sendMessage(fd, payload, NORMAL, 1);
 }
 
-void kbRun() {
-    sendMessage(emptyDataPacket, RUN, 0);
+int kbReset(int fd) {
+    return sendMessage(fd, emptyDataPacket, RESET, 0);
 }
 
-void kbSendMessage(uint8_t *payload) {
-    sendMessage(payload, NORMAL, 1);
+int kbRun(int fd) {
+    return sendMessage(fd, emptyDataPacket, RUN, 0);
 }
