@@ -9,10 +9,9 @@ int max(int one, int two) {
 }
 
 int main(int argc, char* argv[]) {
-    int fd = openOhc(OHC_DEFAULT_ADDRESS);
+    int fd = openOhc(OHC_DEFAULT_ADDRESS_MACOS);
 
     while (1) {
-        // int i = atoi(argv[1]);
         int i;
         uint8_t payload[9];
 

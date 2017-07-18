@@ -1,5 +1,39 @@
 #include "kiloCommander.h"
 
+// Magic definitions.
+#define PAGE_SIZE 128
+#define PACKET_HEADER 0x55
+#define PACKET_SIZE PAGE_SIZE + 4
+#define COMMAND_STOP 250
+#define OHC_BAUD 38400
+
+// Command packet types.
+enum {
+    PACKET_STOP,
+    PACKET_LEDTOGGLE,
+    PACKET_FORWARDMSG,
+    PACKET_FORWARDRAWMSG,
+    PACKET_BOOTPAGE
+};
+
+// Data packet types.
+typedef enum {
+    NORMAL = 0,
+    GPS,
+    SPECIAL = 0x80,
+    BOOT = 0x80,
+    BOOTPGM_PAGE,
+    BOOTPGM_SIZE,
+    RESET,
+    SLEEP,
+    WAKEUP,
+    CHARGE,
+    VOLTAGE,
+    RUN,
+    READUID,
+    CALIB
+} message_type_t;
+
 // Default "empty" data packet for sending commands.
 uint8_t emptyDataPacket[9] = {0};
 
