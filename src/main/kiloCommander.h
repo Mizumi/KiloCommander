@@ -1,3 +1,6 @@
+#ifndef KILO_COMMANDER_H
+#define KILO_COMMANDER_H
+
 #include <stdlib.h>  /* Something else. */
 #include <stdint.h>  /* Unsigned integer types */
 #include <stdio.h>   /* Standard input/output definitions */
@@ -45,3 +48,5 @@ int kbRun(int fd);
  * @return -1 on failure.
  */
 int kbReset(int fd);
+
+#endif
