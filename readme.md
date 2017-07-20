@@ -1,6 +1,9 @@
 # Kilo Commander
 Kilo Commander is a C API for interacting with the Overhead Control Module for a swarm of Kilobots. Currently, it only supports UNIX systems.
 
+## Library
+Kilo Commander's core library consists of just two files - `kiloCommander.h` and `kiloCommander.c`. With these, you can send messages to an entire kilobot swarm; just refer to the `kiloCommander.h` file for example usages.
+
 ## Firmware
 Kilo Commander comes with  firmware that allows native C code on a desktop to communicate with C code on a resource-constrained embedded device. The firmware has two components, the ***driver*** and the ***firmware***.
 

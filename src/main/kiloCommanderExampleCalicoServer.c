@@ -1,5 +1,6 @@
-#include "kiloCommander.h"
+#include "kilobotCalicoDriver.h"
 
+// Helper for finding max values.
 int max(int one, int two) {
     if (one > two) {
         return one;
@@ -9,28 +10,21 @@ int max(int one, int two) {
 }
 
 int main(int argc, char* argv[]) {
-    int fd = openOhc(OHC_DEFAULT_ADDRESS_MACOS);
+    // Start the firmware driver.
+    initializeCalicoDriver(OHC_DEFAULT_ADDRESS_MACOS);
 
     while (1) {
         int i;
-        uint8_t payload[9];
-
         for (i = 0; i < 90; i++) {
+            // Print debugging info.
             fprintf(stderr, "On ID:%d\n", i);
-            payload[8] = i;
-            payload[0] = max((rand() % 3), 1);
-            payload[1] = max((rand() % 3), 1);
-            payload[2] = max((rand() % 3), 1);
 
-            kbSendMessage(fd, payload);
+            // Send message to set kilobot color and then wait.
+            setColor(i, i ,RGB(max((rand() % 3), 1), max((rand() % 3), 1), max((rand() % 3), 1)));
             usleep(25000);
 
-            payload[8] = i;
-            payload[0] = 0;
-            payload[1] = 0;
-            payload[2] = 0;
-
-            kbSendMessage(fd, payload);
+            // Send message to reset kilobot color and then wait.
+            setColor(i, i ,RGB(0, 0, 0));
             usleep(25000);
         }
     }
