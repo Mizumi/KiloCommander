@@ -149,7 +149,7 @@ int openOhc(const char* name) {
     return state.fd;
 }
 
-int sendMessage(int fd, uint8_t *payload, uint8_t type_int, int withPayload) {
+int kiloCommanderSendMessage(int fd, uint8_t *payload, uint8_t type_int, int withPayload) {
     // Exit if bad fd.
     if (!_hasState(fd)) {
         fprintf(stderr, "Cannot send data messages if the serial port is not connected (FD = %d).\n", fd);
@@ -173,7 +173,7 @@ int sendMessage(int fd, uint8_t *payload, uint8_t type_int, int withPayload) {
         packet[PACKET_SIZE-1]=PACKET_HEADER^PACKET_STOP;
     } else {
         if (state->sending) {
-            sendMessage(fd, emptyDataPacket, COMMAND_STOP, 0);
+            kiloCommanderSendMessage(fd, emptyDataPacket, COMMAND_STOP, 0);
         }
 
         state->sending = 1;
@@ -209,13 +209,13 @@ int sendMessage(int fd, uint8_t *payload, uint8_t type_int, int withPayload) {
 }
 
 int kbSendMessage(int fd, uint8_t *payload) {
-    return sendMessage(fd, payload, NORMAL, 1);
+    return kiloCommanderSendMessage(fd, payload, NORMAL, 1);
 }
 
 int kbReset(int fd) {
-    return sendMessage(fd, emptyDataPacket, RESET, 0);
+    return kiloCommanderSendMessage(fd, emptyDataPacket, RESET, 0);
 }
 
 int kbRun(int fd) {
-    return sendMessage(fd, emptyDataPacket, RUN, 0);
+    return kiloCommanderSendMessage(fd, emptyDataPacket, RUN, 0);
 }
