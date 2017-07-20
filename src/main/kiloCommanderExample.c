@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
         int i;
         uint8_t payload[9];
 
-        for (i = 0; i < 20; i++) {
+        for (i = 0; i < 90; i++) {
             fprintf(stderr, "On ID:%d\n", i);
             payload[8] = i;
             payload[0] = max((rand() % 3), 1);
