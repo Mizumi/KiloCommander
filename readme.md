@@ -1,7 +1,7 @@
 # Kilo Commander
 Kilo Commander is a C API for interacting with the Overhead Control Module for a swarm of Kilobots. Currently, it only supports UNIX systems.
 
-## Calico
+## Firmware
 Kilo Commander comes with  firmware that allows native C code on a desktop to communicate with C code on a resource-constrained embedded device. The firmware has two components, the ***driver*** and the ***firmware***.
 
 ### Driver
