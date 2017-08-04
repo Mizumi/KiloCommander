@@ -1,2 +1,3 @@
 *.gch
 /server
+/libkilobotcalicodriver.so
