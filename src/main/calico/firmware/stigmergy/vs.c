@@ -15,61 +15,48 @@ uint8_t vsX = 0;
 uint8_t vsY = 0;
 
 // Virtual Stigmergy table.
-// TODO: Make size configurable, blah, blah.
 VsTuple vsMap[VS_SIZE];
 
-// Current number of elements in the Virtual Stigmergy table (total).
-int vsMapSize = 0;
+// Virtual Stigmergy table index, used to map from keys to an actual index in the table.
+int vsMapIndexActiveHead = 0;
+int vsMapIndexPassiveHead = VS_SIZE - 1;
 
-// Write heads for watched and passive values.
-int vsMapWatchedHead = 0;
-int vsMapPassiveHead = VS_SIZE - 1;
-
-// "Clock" for tracking access rate of elements.
-uint64_t vsMapAccessClock = 0;
+// Current age of tuples in the Virtual Stigmergy table (lamport clock based on access).
+uint64_t vsMapLamportClock = 0;
 
 /**
- * TODO:
- *
- * @param idx
- *
- *  @return [description]
+ * Helper method to create an empty VsTuple.
  */
-bool _isWatched(int idx) {
-    return (idx >= 0) && (idx < vsMapWatchedHead);
+VsTuple _createEmptyVsTuple() {
+    VsTuple tuple;
+    tuple.id = 0; // TODO: Initialize to vsLocalId?
+    tuple.timestamp = 0;
+    tuple.key = 0;
+    tuple.value = 0;
+    tuple.posX = 0; // TODO: Initialize to vsX?
+    tuple.posY = 0; // TODO: Initialize to vsY?
+    tuple.lastAccessed = 0; // TODO: Initialize to vsMapLamportClock?
+
+    return tuple;
 }
 
 /**
- * TODO:
- *
- * @method _isPassive
- * @param idx
- * @return [description]
- */
-bool _isPassive(int idx) {
-    return (idx < VS_SIZE) && (idx > vsMapPassiveHead);
-}
-
-/**
- * TODO:
- *
- * @param key
- *
- * @return [description]
+ * Returns the index of the tuple with the associated key, or -1 if no such index is found.
  */
 int _getIndexOfTupleWithKey(uint8_t key) {
+    // Tuple index holder.
     int i;
 
     // Look for the key among our watched tuples.
-    for (i = 0; i < vsMapWatchedHead; i++) {
-        if (vsMap[i].key == key) {
+    for (i = 0; i < vsMapIndexActiveHead; i++) {
+        if (vsMap[i].timestamp > 0 && vsMap[i].key == key) {
             return i;
         }
     }
 
     // Look for the key among our passive tuples.
-    for (i = vsMapPassiveHead + 1; i < VS_SIZE; i++) {
-        if (vsMap[i].key == key) {
+    for (i = vsMapIndexPassiveHead + 1; i < VS_SIZE; i++) {
+        if (vsMap[i].timestamp > 0 && vsMap[i].key == key) {
             return i;
         }
     }
@@ -79,163 +66,139 @@ int _getIndexOfTupleWithKey(uint8_t key) {
 }
 
 /**
- * TODO:
- *
- * @return [description]
+ * Helper method to determine if a tuple is in the active space.
  */
-uint8_t _keyOfFurthestPassiveTuple() {
-    // If there are no passive tuples, exit.
-    if (vsMapPassiveHead + 1 >= VS_SIZE) {
+bool _isActiveTuple(uint8_t key) {
+    int idx = _getIndexOfTupleWithKey(key);
+    return (idx >= 0) && (idx < vsMapIndexActiveHead);
+}
+
+/**
+ * Helper method to determine if a tuple is in the passive space.
+ */
+bool _isPassiveTuple(uint8_t key) {
+    int idx = _getIndexOfTupleWithKey(key);
+    return (idx < VS_SIZE) && (idx > vsMapIndexPassiveHead);
+}
+
+/**
+ * Returns the index of the oldest active tuple, or -1 if there are none.
+ */
+int _getIndexOfOldestActiveTuple() {
+    // If there are no active tuples, exit.
+    if (vsMapIndexActiveHead <= 0) {
         return -1;
     }
 
-    // Furthest tuple index.
-    int idx = vsMapPassiveHead + 1;
+    // Tuple index holder.
+    int idx = -1;
 
-    // Furthest tuple distance so far. Initialize to the first element.
-    float furthestDistance = distanceTo(vsMap[idx]);
+    // Oldest seen age so far. Initialize to the maximum value of a uint64.
+    uint64_t oldestTupleAge = UINT64_MAX;
+
+    // Iterate over all active tuples, finding the oldest one.
+    int i;
+    for (i = 0; i < vsMapIndexActiveHead; i++) {
+        if (vsMap[i].timestamp > 0 && vsMap[i].lastAccessed < oldestTupleAge) {
+            idx = i;
+            oldestTupleAge = vsMap[i].lastAccessed;
+        }
+    }
+
+    // Return the index. If, for some reason, none were found, return -1.
+    return idx;
+}
+
+/**
+ * Returns the index of the furthest-away passive tuple, or -1 if there are none.
+ */
+int _getIndexOfFurthestPassiveTuple() {
+    // If there are no passive tuples, exit.
+    if (vsMapIndexPassiveHead + 1 >= VS_SIZE) {
+        return -1;
+    }
+
+    // Tuple index holder.
+    int idx = -1;
+
+    // Furthest seen distance so far. Initialize to a negative value.
+    float furthestDistance = -1;
 
     // Iterate over all tuples, finding the furthest one.
     int i;
-    for (i = vsMapPassiveHead + 2; i < VS_SIZE; i++) {
-        if (distanceTo(vsMap[i]) > furthestDistance) {
+    for (i = vsMapIndexPassiveHead + 1; i < VS_SIZE; i++) {
+        float distance = distanceToTuple(vsMap[i]);
+        if (vsMap[i].timestamp > 0 && distance > furthestDistance) {
             idx = i;
-            furthestDistance = distanceTo(vsMap[i]);
+            furthestDistance = distance;
         }
     }
 
-    // Return index.
+    // Return the index. If, for some reason, none were found, return -1.
     return idx;
 }
 
 /**
- * TODO:
+ * Helper method to remove tuples from the stigmergy table.
  *
- * @return [description]
+ * @param key Key of the tuple to remove.
  */
-uint8_t _keyOfOldestWatchedTuple() {
-    // If there are no watched tuples, exit.
-    if (vsMapWatchedHead <= 0) {
-        return -1;
+void _removeTuple(uint8_t key) {
+    // Only remove tuples that need to be removed.
+    if (_getIndexOfTupleWithKey(key) >= 0) {
+
+        // Shuffle all tuples that come later backwards (active tuples).
+        if (_isActiveTuple(key)) {
+            int i;
+            for (i = _getIndexOfTupleWithKey(key); i < vsMapIndexActiveHead; i++) {
+                if (i + 1 < vsMapIndexActiveHead) {
+                    // Shuffle tuple backwards.
+                    vsMap[i] = vsMap[i + 1];
+
+                // Fail-fast if the next index is out of bounds.
+                } else {
+                    break;
+                }
+            }
+
+            // Move the head backwards once.
+            vsMapIndexActiveHead = vsMapIndexActiveHead - 1;
+
+        // Shuffle all tuples that come later forwards (passive tuples).
+        } else {
+            int i;
+            for (i = _getIndexOfTupleWithKey(key); i > vsMapIndexPassiveHead; i--) {
+                if (i - 1 > vsMapIndexPassiveHead) {
+                    // Shuffle tuple forwards.
+                    vsMap[i] = vsMap[i - 1];
+
+                // Fail-fast if the next index is out of bounds.
+                } else {
+                    break;
+                }
+            }
+
+            // Move the head backwards once.
+            vsMapIndexPassiveHead = vsMapIndexPassiveHead + 1;
+        }
+
+        // Clear index.
+        vsMap[_getIndexOfTupleWithKey(key)] = _createEmptyVsTuple();
     }
+}
 
-    // Oldest tuple index.
-    int idx = 0;
-
-    // Oldest tuple age so far.
-    uint64_t oldestTuple = vsMap[idx].accessed;
-
-    // Iterate over all tuples, finding the oldest one.
+/**
+ * Helper method to prune any tuples that are too far away or too old.
+ */
+void _pruneTuples() {
     int i;
-    for (i = 1; i < vsMapWatchedHead; i++) {
-        if (vsMap[i].accessed < oldestTuple) {
-            idx = i;
-            oldestTuple = vsMap[i].accessed;
+    for (i = 0; i < VS_SIZE; i++) {
+        if (_getIndexOfTupleWithKey(i) > -1 &&
+            ((vsMapLamportClock - vsMap[_getIndexOfTupleWithKey(i)].lastAccessed > VS_MAX_TUPLE_AGE) ||
+             (distanceToTupleWithKey(i) > VS_MAX_TUPLE_DISTANCE))) {
+            _removeTuple(i);
         }
     }
-
-    return idx;
-}
-
-/**
- *
- * TODO:
- *
- * @param key
- * @param tuple
- */
-void _addPassiveTuple(uint8_t key, VsTuple tuple, bool overwriteWatchedTuples) {
-    // Perform insertion only if there's space.
-    if (vsMapPassiveHead >= max(vsMapWatchedHead, VS_SIZE_MIN_WATCHED)) {
-        // Insert the tuple into the passive section of our table.
-        vsMap[vsMapPassiveHead] = tuple;
-
-        // Progress head.
-        vsMapPassiveHead = min(vsMapPassiveHead - 1, VS_SIZE - 1);
-    } else {
-
-        // Can we overwrite any watched tuples?
-        if (overwriteWatchedTuples && vsMapPassiveHead >= VS_SIZE_MIN_WATCHED) {
-            // Determine the oldest watched tuple.
-            uint8_t key = _keyOfOldestWatchedTuple();
-
-            // Overwrite that tuple.
-            int keyIdx = _getIndexOfTupleWithKey(key);
-            vsMap[keyIdx] = vsMap[vsMapPassiveHead];
-
-            // Insert this tuple.
-            vsMap[vsMapPassiveHead] = tuple;
-
-            // Progress heads.
-            vsMapWatchedHead = vsMapPassiveHead;
-            vsMapPassiveHead -= 1;
-        } else {
-            // Determine the furthest passive tuple.
-            uint8_t key = _keyOfFurthestPassiveTuple();
-
-            // Overwrite the furthest passive tuple.
-            int keyIdx = _getIndexOfTupleWithKey(key);
-            vsMap[keyIdx] = tuple;
-        }
-    }
-}
-
-/**
- * Helper method to process and mark a tuple as watched.
- *
- * @param key Key of the tuple to watch.
- * @param tuple Tuple to watch.
- */
-void _addWatchedTuple(uint8_t key, VsTuple tuple) {
-    // Perform an insertion only if there's space.
-    if (vsMapWatchedHead <= min(vsMapPassiveHead, VS_SIZE - VS_SIZE_MIN_PASSIVE - 1)) {
-        // Insert the tuple into the watched section of our table.
-        vsMap[vsMapWatchedHead] = tuple;
-
-        // Progress head.
-        vsMapWatchedHead += 1;
-    } else {
-
-        // Can we overwrite any passive tuples?
-        if (vsMapPassiveHead < VS_SIZE - VS_SIZE_MIN_PASSIVE - 1) {
-            // Determine the furthest away passive tuple.
-            uint8_t k = _keyOfFurthestPassiveTuple();
-
-            // Swap the furthest passive tuple with the edge of our
-            // watched tuples.
-            int keyIdx = _getIndexOfTupleWithKey(k);
-            vsMap[keyIdx] = vsMap[vsMapWatchedHead];
-
-            // Write the watched tuple in.
-            vsMap[vsMapWatchedHead] = tuple;
-
-            // Progress heads.
-            vsMapPassiveHead = max(vsMapWatchedHead, vsMapPassiveHead);
-            vsMapWatchedHead += 1;
-        } else {
-            // Determine the oldest watched tuple.
-            uint8_t k = _keyOfOldestWatchedTuple();
-
-            // Save the oldest tuple.
-            int keyIdx = _getIndexOfTupleWithKey(k);
-            VsTuple temp = vsMap[keyIdx];
-
-            // Overwrite it with the new tuple.
-            vsMap[keyIdx] = tuple;
-
-            // Try to put the tuple back as a passive tuple
-            // without overwriting the recent tuple.
-            _addPassiveTuple(key, temp, true);
-        }
-    }
-}
-
-void _removePassiveTuple(int idx) {
-    // Reverse the writing head for passive tuples.
-    vsMapPassiveHead += 1;
-
-    // Overwrite the data in this slot to replace with the last tuple.
-    vsMap[idx] = vsMap[vsMapPassiveHead];
 }
 
 /**
@@ -250,52 +213,122 @@ void _removePassiveTuple(int idx) {
  */
 void _insertTuple(uint8_t key, VsTuple tuple, bool triggeredByAgent) {
 
-    // Set this tuple's access time.
-    tuple.accessed = vsMapAccessClock;
+    // Update this tuple's access time.
+    tuple.lastAccessed = vsMapLamportClock;
 
-    // Find the index for this tuple.
+    // Find the index for this tuple (it may not exist).
     int idx = _getIndexOfTupleWithKey(key);
 
-    // See if we have the tuple in our table.
+    // If the tuple is not in our table, insert it immediately.
     if (idx < 0) {
-        // No tuple exists for this key. Insert it.
 
-        // If this is an agent-triggered operation, insert as watched.
+        // Insert as an active tuple.
         if (triggeredByAgent) {
-            _addWatchedTuple(key, tuple);
 
-        // Otherwise insert as passive, but do not override watched tuples.
+            // We have room!
+            // TODO: Validate this logic.
+            if (vsMapIndexActiveHead <= min(vsMapIndexPassiveHead, VS_SIZE - VS_SIZE_MIN_PASSIVE - 1)) {
+
+                // Insert the tuple.
+                vsMap[vsMapIndexActiveHead] = tuple;
+
+                // Progress head.
+                vsMapIndexActiveHead++;
+
+            // We're out of room, and the only solution is to overwrite.
+            // Demote the oldest active tuple to a passive tuple.
+            } else {
+
+                // Find the oldest active tuple.
+                int idx = _getIndexOfOldestActiveTuple();
+
+                // Grab a copy of it.
+                VsTuple oldestTuple = vsMap[idx];
+
+                // Remove it from the map.
+                _removeTuple(oldestTuple.key);
+
+                // Insert the new tuple.
+                // This is ok because the active head will have been moved backwards
+                // by _removeTuple(...).
+                vsMap[vsMapIndexActiveHead] = tuple;
+
+                // Progress the active head.
+                // This is ok because the active head will have been moved backwards
+                // by _removeTuple(...).
+                vsMapIndexActiveHead++;
+
+                // Re-insert the old tuple as a passive tuple.
+                _insertTuple(oldestTuple.key, oldestTuple, false);
+            }
+
+        // Insert as a passive tuple.
         } else {
-            _addPassiveTuple(key, tuple, false);
+
+            // We have room!
+            // TODO: Validate this logic.
+            if (vsMapIndexPassiveHead >= max(vsMapIndexActiveHead, VS_SIZE_MIN_ACTIVE)) {
+
+                    // Insert the tuple.
+                    vsMap[vsMapIndexPassiveHead] = tuple;
+
+                    // Progress head.
+                    vsMapIndexPassiveHead--;
+
+            // We're out of room, and the only solution is to overwrite.
+            // Replace the furthest passive tuple.
+            } else {
+
+                // Find the furthest passive tuple.
+                int idx = _getIndexOfFurthestPassiveTuple();
+
+                // Grab a copy of it.
+                VsTuple furthestTuple = vsMap[idx];
+
+                // Only proceed if this tuple is closer than that tuple;
+                // there is no point in inserting an even further away tuple.
+                if (distanceToTuple(tuple) < distanceToTuple(furthestTuple)) {
+
+                    // Remove it from the map.
+                    _removeTuple(furthestTuple.key);
+
+                    // Insert the new tuple.
+                    // This is ok because the passive head will have been moved backwards
+                    // by _removeTuple(...).
+                    vsMap[vsMapIndexPassiveHead] = tuple;
+
+                    // Progress the passive head.
+                    // This is ok because the passive head will have been moved backwards
+                    // by _removeTuple(...).
+                    vsMapIndexPassiveHead--;
+                }
+            }
         }
 
-    // If we do, was this operation triggered by the agent?
-    } else if (triggeredByAgent) {
-        // Was this tuple stored in the passive table?
-        if (_isPassive(idx)) {
-            // Promote this tuple.
+        // Progress access clock.
+        vsMapLamportClock++;
 
-            // Remove this tuple from the passive list.
-            _removePassiveTuple(idx);
+    // If the tuple is in our table but has a mismatch in its status,
+    // promote it to active state.
+    } else if (triggeredByAgent && _isPassiveTuple(idx)) {
 
-            // Add it to the reecnt list.
-            _addWatchedTuple(key, tuple);
+        // Remove the tuple.
+        _removeTuple(key);
 
-        // This tuple is already watched. Update it.
-        } else {
-            // Perform update only.
-            vsMap[idx] = tuple;
-            // fprintf(stderr, "IT@ Unit %u tuple with ID %u and IDX %u is stored actively.\n", getVsLocalId(), key, idx);
-        }
+        // Re-insert the tuple as an active tuple.
+        _insertTuple(key, tuple, triggeredByAgent);
 
-    // This operation was not triggered by the agent; update tuple only, but
-    // do not change the tables it is in.
+        // We do not progress the access clock because the recursive call above will handle that for us.
+        return;
+
+    // Otherwise, perform a direct value update.
     } else {
+        // Insert tuple.
         vsMap[idx] = tuple;
-    }
 
-    // Progress access clock.
-    vsMapAccessClock += 1;
+        // Progress access clock.
+        vsMapLamportClock++;
+    }
 }
 
 /**
@@ -311,67 +344,63 @@ void _insertTuple(uint8_t key, VsTuple tuple, bool triggeredByAgent) {
  */
 VsTuple _retrieveTuple(uint8_t key, bool triggeredByAgent) {
 
-    // Create an empty tuple.
-    VsTuple tuple;
-
-    // Find the index for this tuple.
+    // Identify the tuple index.
     int idx = _getIndexOfTupleWithKey(key);
 
-    // Is the tuple not in our table?
+    // If we don't have the tuple, return a blank one.
     if (idx < 0) {
-        // Create a "Default" empty tuple if the given tuple
-        // key doesn't exist in our table.
-        tuple.value = 0;
-        tuple.posX = vsX;
-        tuple.posY = vsY;
-        tuple.timestamp = 0;
-        tuple.id = vsLocalId;
-        tuple.accessed = vsMapAccessClock;
 
-        // Was this operation triggered by the agent?
-        if (triggeredByAgent) {
-            // Add the tuple as a watched tuple.
-            _addWatchedTuple(key, tuple);
-        }
+        // Print a warning. TODO: Needed? This gets triggered a lot because of
+        //                        the way broadcasts are handled.
+        // fprintf(stderr, "Access out of bounds in _retrieveTuple.\n");
 
-        // TODO: Needed?
-//        else {
-//            // Add the tuple as a passive tuple.
-//            _addPassiveTuple(key, tuple, false);
-//        }
+        // Create an empty tuple.
+        VsTuple tuple = _createEmptyVsTuple();
+
+        // TODO: Verify whether or not we need to insert the blank tuple
+        //       as a watched tuple if this was agent-triggered. We might
+        //       not need to.
+        // _insertTuple(key, tuple, triggeredByAgent);
+
+        // Return a blank tuple.
+        return tuple;
+
+    // Otherwise, return the one we have.
     } else {
-        // Retrieve tuple information.
-        tuple = vsMap[idx];
+        // Update last access time.
+        vsMap[idx].lastAccessed = vsMapLamportClock;
 
-        // Update access time.
-        tuple.accessed = vsMapAccessClock;
-        vsMap[idx] = tuple;
+        // Fetch the tuple.
+        VsTuple tuple = vsMap[idx];
 
-        // If this operation was triggered by the agent,
-        // was the tuple stored passively?
-        if (triggeredByAgent && _isPassive(idx)) {
-            // Promote the tuple to a watched tuple.
+        // If the tuple is in our table but has a mismatch in its status,
+        // promote it to active state.
+        if (triggeredByAgent && _isPassiveTuple(idx)) {
 
-            // Remove it from the passive list.
-            _removePassiveTuple(idx);
+            // Remove the tuple.
+            _removeTuple(key);
 
-            // Add it as watched tuple.
-            _addWatchedTuple(key, tuple);
+            // Re-insert the tuple as an active tuple.
+            _insertTuple(key, tuple, triggeredByAgent);
+
+            // We do not progress the access clock because the recursive call above will handle that for us.
+
+        // Otherwise, progress the clock and return the tuple directly.
         } else {
-            // fprintf(stderr, "RT@ Unit %u tuple with ID %u and IDX %u is stored actively.\n", getVsLocalId(), key, idx);
+            // Progress lamport clock.
+            vsMapLamportClock++;
         }
+
+        // Return the tuple.
+        return tuple;
     }
-
-    // Progress operation counter.
-    vsMapAccessClock += 1;
-
-    // Return the tuple.
-    return tuple;
 }
 
 bool vsInit(uint8_t localId) {
     if (!vsInitialized) {
         vsLocalId = localId;
+
+        // TODO: Do we need to initialize the dual tables in any way?
 
         // Table is now initialized.
         vsInitialized = true;
@@ -399,8 +428,16 @@ void setVsLocation(uint8_t x, uint8_t y) {
     vsY = y;
 }
 
-float distanceTo(VsTuple tuple) {
+float distanceToTuple(VsTuple tuple) {
     return sqrt(pow(vsX - vsY, 2) + pow(tuple.posX - tuple.posY, 2));
+}
+
+float distanceToTupleWithKey(uint8_t key) {
+    if (has(key)) {
+        return distanceToTuple(_retrieveTuple(key, false));
+    } else {
+        return -1;
+    }
 }
 
 VsTuple vsOnConflict (uint8_t key, VsTuple localValue, VsTuple remoteValue) {
@@ -484,6 +521,9 @@ void onBroadcastReceived(VsBroadcast broadcast) {
             broadcastTuple(broadcast.tuple.key, VS_PUT);
         }
     }
+
+    // Prune tuples.
+    // _pruneTuples();
 }
 
 void encodeVsBroadcast(VsBroadcast broadcast, uint8_t *values) {
@@ -523,7 +563,7 @@ bool decodeVsBroadcast(uint8_t *broadcast, VsBroadcast *b) {
         b->tuple.id = (uint8_t) (broadcast[7]);
 
         // Zero out metadata.
-        b->tuple.accessed = 0;
+        b->tuple.lastAccessed = 0;
         return true;
     } else {
         return false;
@@ -531,11 +571,14 @@ bool decodeVsBroadcast(uint8_t *broadcast, VsBroadcast *b) {
 }
 
 int has(uint8_t key) {
-   return (_getIndexOfTupleWithKey(key) > -1);
+    return _getIndexOfTupleWithKey(key) >= 0;
 }
 
 int vsSize() {
-    return vsMapSize;
+    // TODO: Verify this logic.
+    int numActive = vsMapIndexActiveHead;
+    int numPassive = VS_SIZE - vsMapIndexPassiveHead - 1;
+    return numActive + numPassive;
 }
 
 void put(uint8_t key, uint16_t value) {
@@ -566,6 +609,7 @@ uint16_t get(uint8_t key) {
 }
 
 VsTuple getTuple(uint8_t key) {
+
     // Find the tuple.
     VsTuple tuple = _retrieveTuple(key, true);
 
@@ -574,4 +618,32 @@ VsTuple getTuple(uint8_t key) {
 
     // Return the tuple.
     return tuple;
+}
+
+int getTupleAt(uint8_t posX, uint8_t posY, uint8_t radius, VsTuple* array) {
+
+    // Number of found tuples.
+    int found = 0;
+
+    // Iterate over the entire VS map looking for tuples.
+    int i;
+    for (i = 0; i < VS_SIZE; i++) {
+
+        // Grab a reference to the tuple.
+        VsTuple tuple = vsMap[i];
+
+        // Does the tuple exist and lie within our circle?
+        if (tuple.timestamp > 0 &&
+            square(tuple.posX - posX) + square(tuple.posY - posY) <= square(radius)) {
+
+            // Add it the list of found tuples.
+            array[found] = tuple;
+
+            // Increment the number of found tuples.
+            found += 1;
+        }
+    }
+
+    // Return the number of found tuples.
+    return found;
 }
