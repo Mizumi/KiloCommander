@@ -6,11 +6,13 @@ int ohcFd = -1;
 void initializeCalicoDriver(const char* overheadControllerAddress) {
 
     // Open the overhead controller.
-    int ohcFd = openOhc(overheadControllerAddress);
+    ohcFd = openOhc(overheadControllerAddress);
 
     // Print an error if the driver could not be opened.
     if (ohcFd < 0) {
-        fprintf(stderr, "Opening the overhead controller failed with code %d.", ohcFd);
+        fprintf(stderr, "Opening the overhead controller failed with code %d.\n", ohcFd);
+    } else {
+        fprintf(stderr, "Successfully opened the overhead controller with file descriptor %d.\n", ohcFd);
     }
 }
 
