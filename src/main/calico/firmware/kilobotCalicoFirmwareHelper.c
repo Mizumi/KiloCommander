@@ -1,4 +1,4 @@
-#include "kilobotCalicoFirmareHelper.h"
+#include "kilobotCalicoFirmwareHelper.h"
 
 // Ring buffer for storing messages to broadcast.
 #define CALICO_BUFFER_MAX_SIZE 8

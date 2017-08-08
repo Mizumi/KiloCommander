@@ -41,8 +41,8 @@ message_t *getNextCalicoMessage();
 int progressNextCalicoMessage();
 
 /**
- * Decodes a message into the format of a VsBroadcast and attempts to process
- * it into the local virtual stigmergy table.
+ * Decodes a message received using the Calico broadcast protocol and
+ * hands it off for processing.
  *
  * @param msg Message to decode.
  */
@@ -52,11 +52,11 @@ void decodeAndProcessCalicoMessage(message_t *msg);
  * Adds a new message to the message transmission queue. If the queue is full,
  * the message will not be added.
  *
- * @param message Message to queue.
+ * @param payload Message payload to queue.
  *
  * @return 0 if the message was queued, and -1 if the queue is currently full.
  */
-int queueCalicoBroadcast(message_t message);
+int queueCalicoBroadcast(uint8_t* payload);
 
 /**
  * Adds a new VsBroadcast to the message transmission queue. If the queue
