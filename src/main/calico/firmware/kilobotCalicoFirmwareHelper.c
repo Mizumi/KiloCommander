@@ -55,7 +55,7 @@ int progressNextCalicoMessage() {
 void decodeAndProcessCalicoMessage(message_t *msg) {
 
     // Is it a VS Broadcast (most common case.)
-    if (msg->data == MSG_SEND_VS_BROADCAST) {
+    if (msg->data[0] == MSG_SEND_VS_BROADCAST) {
         // Prepare struct to decode into.
         VsBroadcast b;
         b.action = 0; // Meaningless assignment in order to force init struct.
@@ -77,16 +77,16 @@ void decodeAndProcessCalicoMessage(message_t *msg) {
         }
 
     // Is it a regular broadcast?
-    } else if (msg->data[0] == MSD_SEND_BROADCAST) {
+    } else if (msg->data[0] == MSG_SEND_BROADCAST) {
         // Hand off processing to the user.
-        onCalicoMessageReceived(*msg->data);
+        onCalicoMessageReceived(msg->data);
 
     // Is it a regular message targeted towards this unit?
     } else if (msg->data[0] == MSG_SEND_MSG &&
                msg->data[1] <= kilo_uid &&
                msg->data[2] >= kilo_uid) {
        // Hand off processing to the user.
-       onCalicoMessageReceived(*msg->data)
+       onCalicoMessageReceived(msg->data);
 
    // Is it a position assignment message targeted towards this unit?
    } else if (msg->data[0] == MSG_SET_POS &&
@@ -171,7 +171,7 @@ int queueVsBroadcast(VsBroadcast broadcast) {
     encodeVsBroadcast(broadcast, payload);
 
     // Queue it for broadcast.
-    return _queueCalicoBroadcast(payload, MSG_SEND_VS_BROADCAST);
+    return _queueCalicoBroadcastHelper(payload, MSG_SEND_VS_BROADCAST);
 }
 
 int defaultCalicoKilobotMainSetup() {
