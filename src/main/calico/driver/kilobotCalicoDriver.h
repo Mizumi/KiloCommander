@@ -51,8 +51,9 @@ void setColor(uint8_t idMin, uint8_t idMax, uint8_t color);
  *
  * @param posX 0 - 255 value denoting the kilobot's X-axis position.
  * @param posY 0 - 255 value denoting the kilobot's Y-axis position.
+ * @param rotZ 0 - 255 value denoting the kilobot's Z-axis rotation.
  */
-void setPos(uint8_t id, uint8_t posX, uint8_t posY);
+void setPos(uint8_t id, uint8_t posX, uint8_t posY, uint8_t rotZ);
 
 /**
  * Sends a 6 byte message to a specific range of kilobots.

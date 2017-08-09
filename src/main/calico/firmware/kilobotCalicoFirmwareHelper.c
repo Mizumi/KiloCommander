@@ -90,10 +90,10 @@ void decodeAndProcessCalicoMessage(message_t *msg) {
 
    // Is it a position assignment message targeted towards this unit?
    } else if (msg->data[0] == MSG_SET_POS &&
-              msg->data[1] <= kilo_uid &&
-              msg->data[2] >= kilo_uid) {
+              msg->data[1] == kilo_uid) {
       // Set our local VS position.
-      setVsLocation(msg->data[3], msg->data[4]);
+      setVsLocation(msg->data[2], msg->data[3]);
+      setVsRotation(msg->data[4]);
 
    // Is it a color assignment message targeted towards this unit?
    } else if (msg->data[0] == MSG_SET_COLOR &&

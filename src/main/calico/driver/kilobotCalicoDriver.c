@@ -49,7 +49,7 @@ void setColor(uint8_t idMin, uint8_t idMax, uint8_t color) {
     kbSendMessage(ohcFd, message);
 }
 
-void setPos(uint8_t id, uint8_t posX, uint8_t posY) {
+void setPos(uint8_t id, uint8_t posX, uint8_t posY, uint8_t rotZ) {
     // Prepare a message for sending.
     uint8_t message[MSG_MAX_SIZE] = {0};
 
@@ -60,6 +60,7 @@ void setPos(uint8_t id, uint8_t posX, uint8_t posY) {
     // Insert message payload.
     message[2] = posX;
     message[3] = posY;
+    message[4] = rotZ;
 
     // Send the message.
     kbSendMessage(ohcFd, message);
