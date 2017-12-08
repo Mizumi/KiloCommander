@@ -3,7 +3,7 @@ TARGETS = calico-firmware
 all: $(TARGETS)
 .PHONY: $(TARGETS)
 
-calico-firmware: build/calico-firmware.elf build/calico-firmware.hex build/calico-firmware.lss
+firmware: build/calico-firmware.elf build/calico-firmware.hex build/calico-firmware.lss
 
 CC = avr-gcc -std=c99
 AVROC = avr-objcopy
