@@ -5,7 +5,7 @@
  * @author Brandon Sanders [brandon@alicorn.io]
  */
 #include "kilolib.h"
-#include "kilobotCalicoFirmareHelper.h"
+#include "kilobotCalicoFirmwareHelper.h"
 
 void onCalicoMessageReceived(uint8_t* msg) {
 

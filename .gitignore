@@ -1,3 +1,7 @@
 *.gch
 /server
 /libkilobotcalicodriver*
+build/
+kilolib/build/
+docs/
+kilolib/doc/
