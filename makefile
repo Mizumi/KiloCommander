@@ -21,7 +21,7 @@ KILOLIB = kilolib/build/kilolib.a
 driver:
 	gcc -shared -o libkilobotcalicodriver.so -fPIC src/main/kiloCommander.c src/main/calico/driver/kilobotCalicoDriver.c -Isrc/main -Isrc/main/calico -Isrc/main/calico/driver
 
-driver-mac: lib
+driver-mac: driver
 	mv libkilobotcalicodriver.so libkilobotcalicodriver.dylib
 
 server: driver
